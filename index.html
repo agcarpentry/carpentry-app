@@ -489,15 +489,15 @@ function seedData() {
     projects: [
       { id: "proj1", name: "John Peters", title: "Roof & Structure Rework", date: "2026-07-22", status: "In Progress", amount: 4280,
         jobCost: { materials: [{name:"Roof battens", qty:20, price:12}, {name:"Insulation batts", qty:15, price:18}], extraLabour: [{service:"Roofer subcontractor", name:"Dave M.", phone:"", cost:600}],
-                   travel:[{name:"Site visits", cost:80}], hours:32, rate:65, effort:0.25, travelLevel:0, discount:0 },
+                   travel:[{name:"Site visits", cost:80, duration:"Medium"}], hours:32, rate:65, effort:0.25, travelLevel:0, discount:0 },
         notes: "Client requested extra insulation in the roof cavity.", quoteNotes: "" },
       { id: "proj2", name: "Sarah Mitchell", title: "TV Feature Wall", date: "2026-07-17", status: "Completed", amount: 1752,
         jobCost: { materials: [{name:"Pine framing", qty:8, price:15}, {name:"Plasterboard", qty:4, price:22}], extraLabour: [],
-                   travel:[{name:"Site visit", cost:40}], hours:18, rate:65, effort:0.10, travelLevel:0, discount:0 },
+                   travel:[{name:"Site visit", cost:40, duration:"Short"}], hours:18, rate:65, effort:0.10, travelLevel:0, discount:0 },
         notes: "", quoteNotes: "" },
       { id: "proj3", name: "David Nguyen", title: "Fireplace Surround", date: "2026-06-26", status: "Completed", amount: 2190,
         jobCost: { materials: [{name:"MDF surround panels", qty:6, price:35}, {name:"Trim & mouldings", qty:10, price:9}], extraLabour: [],
-                   travel:[{name:"Site visit", cost:30}], hours:22, rate:65, effort:0.25, travelLevel:0, discount:0 },
+                   travel:[{name:"Site visit", cost:30, duration:"Short"}], hours:22, rate:65, effort:0.25, travelLevel:0, discount:0 },
         notes: "", quoteNotes: "" },
     ],
     portfolio: [
@@ -550,7 +550,7 @@ function calcJobCost(jc) {
   const effortPct = Number(jc.effort) || 0;
   const travelPct = Number(jc.travelLevel) || 0;
   const priceBeforeDiscount = baseCost * (1 + effortPct + travelPct);
-  const discountAmt = priceBeforeDiscount * ((Number(jc.discount)||0)/100);
+  const discountAmt = priceBeforeDiscount * (Number(jc.discount)||0);
   const finalExGst = priceBeforeDiscount - discountAmt;
   const gst = finalExGst * 0.1;
   const finalIncGst = finalExGst + gst;
@@ -724,7 +724,7 @@ function openJobCostSheet(p) {
       ${inputRow('Hourly rate', '$'+jc.rate+'/hr')}
       ${inputRow('Effort %', (jc.effort*100).toFixed(1).replace(/\.0$/,'')+'%')}
       ${inputRow('Travel %', (jc.travelLevel*100).toFixed(1).replace(/\.0$/,'')+'%')}
-      ${inputRow('Discount', jc.discount+'%')}
+      ${inputRow('Discount', (jc.discount*100).toFixed(1).replace(/\.0$/,'')+'%')}
     </div>
 
     <div class="agenda-section-label">Calculated Results</div>
@@ -786,7 +786,7 @@ function openJobCostEdit(pid) {
       <div class="form-field"><label>Hourly rate ($)</label><input type="number" id="jc-rate" value="${jc.rate}"></div>
     </div>
     <div class="form-row">
-      <div class="form-field"><label>Discount (%)</label><input type="number" id="jc-discount" value="${jc.discount}"></div>
+      <div class="form-field"><label>Discount %</label><select id="jc-discount">${percentOptionsHtml(jc.discount)}</select></div>
       <div class="form-field"><label>Friend?</label><select id="jc-isfriend"><option value="No" ${p.isFriend!=='Yes'?'selected':''}>No</option><option value="Yes" ${p.isFriend==='Yes'?'selected':''}>Yes</option></select></div>
     </div>
     <div class="form-row">
@@ -865,25 +865,33 @@ function removeLabourRow(idx) {
 }
 function renderTravelRows(travel) {
   document.getElementById('jc-travel-list').innerHTML = travel.map((t, i) => `
-    <div class="form-row" style="align-items:flex-end;">
-      <div class="form-field" style="flex:2;"><label>Description</label><input class="jc-travel-name" value="${esc(t.name)}"></div>
-      <div class="form-field"><label>Cost ($)</label><input class="jc-travel-cost" type="number" value="${t.cost}"></div>
-      <button class="prospect-remove" style="margin-bottom:14px;" onclick="removeTravelRow(${i})"><svg viewBox="0 0 24 24" fill="none" width="18" height="18"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button>
+    <div style="background:var(--cream);border-radius:10px;padding:10px;margin-bottom:8px;">
+      <div class="form-row" style="align-items:flex-end;margin-bottom:8px;">
+        <div class="form-field" style="flex:2;margin-bottom:0;"><label>Description</label><input class="jc-travel-name" value="${esc(t.name)}"></div>
+        <div class="form-field" style="margin-bottom:0;"><label>Cost ($)</label><input class="jc-travel-cost" type="number" value="${t.cost}"></div>
+        <button class="prospect-remove" onclick="removeTravelRow(${i})"><svg viewBox="0 0 24 24" fill="none" width="18" height="18"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button>
+      </div>
+      <div class="form-field" style="margin-bottom:0;"><label>Duration</label><select class="jc-travel-duration">
+        <option value="Short" ${t.duration==='Short'?'selected':''}>Short (up to 15 min)</option>
+        <option value="Medium" ${t.duration==='Medium'?'selected':''}>Medium (20–30 min)</option>
+        <option value="Long" ${t.duration==='Long'?'selected':''}>Long (30+ min)</option>
+      </select></div>
     </div>
   `).join('') || '<div style="font-size:12px;color:var(--ink-soft);padding:6px 0 10px;">None yet.</div>';
 }
 function readTravelFromForm() {
   const names = document.querySelectorAll('.jc-travel-name');
   const costs = document.querySelectorAll('.jc-travel-cost');
+  const durations = document.querySelectorAll('.jc-travel-duration');
   const out = [];
   for (let i = 0; i < names.length; i++) {
-    out.push({ name: names[i].value, cost: Number(costs[i].value)||0 });
+    out.push({ name: names[i].value, cost: Number(costs[i].value)||0, duration: durations[i] ? durations[i].value : 'Short' });
   }
   return out;
 }
 function addTravelRow() {
   const travel = readTravelFromForm();
-  travel.push({ name: '', cost: 0 });
+  travel.push({ name: '', cost: 0, duration: 'Short' });
   renderTravelRows(travel);
 }
 function removeTravelRow(idx) {
@@ -977,11 +985,19 @@ function renderReports() {
   // percentage usage counts (effort and travel %)
   const effortCounts = {};
   const travelCounts = {};
-  allCalcs.forEach(({c}) => {
+  const discountCounts = {};
+  const durationCounts = { Short: 0, Medium: 0, Long: 0 };
+  allCalcs.forEach(({p: pr, c}) => {
     const eKey = (c.effortPct*100).toFixed(1).replace(/\.0$/,'') + '%';
     const tKey = (c.travelPct*100).toFixed(1).replace(/\.0$/,'') + '%';
+    const dKey = ((Number(pr.jobCost.discount)||0)*100).toFixed(1).replace(/\.0$/,'') + '%';
     effortCounts[eKey] = (effortCounts[eKey]||0) + 1;
     travelCounts[tKey] = (travelCounts[tKey]||0) + 1;
+    discountCounts[dKey] = (discountCounts[dKey]||0) + 1;
+    (pr.jobCost.travel||[]).forEach(t => {
+      const dur = t.duration || 'Short';
+      if (durationCounts[dur] !== undefined) durationCounts[dur]++;
+    });
   });
 
   // bar chart data: revenue vs profit per project
@@ -1042,6 +1058,18 @@ function renderReports() {
     <div class="agenda-section-label">Travel % Used</div>
     <div style="background:white;border-radius:14px;padding:14px;border:1px solid #F0E9DA;margin-bottom:16px;">
       ${Object.keys(travelCounts).length ? Object.entries(travelCounts).map(([k,v]) => inputRow(k, v+' project'+(v>1?'s':''))).join('') : '<div style="font-size:12px;color:var(--ink-soft);">No data.</div>'}
+    </div>
+
+    <div class="agenda-section-label">Discount % Used</div>
+    <div style="background:white;border-radius:14px;padding:14px;border:1px solid #F0E9DA;margin-bottom:16px;">
+      ${Object.keys(discountCounts).length ? Object.entries(discountCounts).map(([k,v]) => inputRow(k, v+' project'+(v>1?'s':''))).join('') : '<div style="font-size:12px;color:var(--ink-soft);">No data.</div>'}
+    </div>
+
+    <div class="agenda-section-label">Travel Distance (by duration)</div>
+    <div style="background:white;border-radius:14px;padding:14px;border:1px solid #F0E9DA;margin-bottom:16px;">
+      ${inputRow('Short trips (up to 15 min)', durationCounts.Short)}
+      ${inputRow('Medium trips (20–30 min)', durationCounts.Medium)}
+      ${inputRow('Long trips (30+ min)', durationCounts.Long)}
     </div>
 
     <div class="agenda-section-label">Job Log ${reportsYearFilter!=='all' ? '('+reportsYearFilter+')' : ''}</div>
