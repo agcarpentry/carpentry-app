@@ -278,6 +278,12 @@
     <button class="fab" onclick="openForm('agenda')">+</button>
   </div>
 
+  <!-- ============ REPORTS ============ -->
+  <div class="screen" id="screen-reports">
+    <div class="topbar"><div class="eyebrow">Business</div><h1>Reports</h1></div>
+    <div class="content" id="reports-content"></div>
+  </div>
+
   <!-- ============ CONTACTS & CREW ============ -->
   <div class="screen" id="screen-contacts">
     <div class="topbar"><div class="eyebrow">Locations</div><h1>Clients &amp; Crew</h1></div>
@@ -376,6 +382,10 @@
     <button class="navitem" data-screen="agenda" onclick="showScreen('agenda')">
       <svg viewBox="0 0 24 24" fill="none"><rect x="3" y="4" width="18" height="17" rx="2" stroke="currentColor" stroke-width="2"/><path d="M3 9h18M8 2v4M16 2v4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
       <span>Agenda</span>
+    </button>
+    <button class="navitem" data-screen="reports" onclick="showScreen('reports')">
+      <svg viewBox="0 0 24 24" fill="none"><path d="M3 20V10M9 20V4M15 20v-7M21 20V13" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      <span>Reports</span>
     </button>
     <button class="navitem" data-screen="contacts" onclick="showScreen('contacts')">
       <svg viewBox="0 0 24 24" fill="none"><path d="M12 21s7-7.2 7-12a7 7 0 10-14 0c0 4.8 7 12 7 12z" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="9" r="2.5" stroke="currentColor" stroke-width="2"/></svg>
@@ -584,6 +594,7 @@ function renderAll() {
   renderPortfolio();
   renderInventory();
   renderAgenda();
+  renderReports();
   renderContacts();
   renderPlatforms();
   renderProspects();
@@ -626,7 +637,6 @@ function openProjectDetail(pid) {
     ${sheetRow('cost', 'Job Cost Calculator', 'Materials, labour & pricing', p.id, 'var(--wood-deep)', iconCalc())}
     ${sheetRow('quote', 'Quote', 'Client-facing quote document', p.id, 'var(--wood)', iconDoc())}
     ${sheetRow('log', 'Job Log', 'Job history & records', p.id, 'var(--fende)', iconList())}
-    ${sheetRow('reports', 'Reports', 'Profit & performance summary', p.id, '#7A5C39', iconChart())}
     ${sheetRow('notes', 'Notes', 'Site notes & client requests', p.id, 'var(--ink-soft)', iconDoc())}
 
     <div class="modal-actions">
@@ -663,7 +673,6 @@ function openSheet(kind, pid) {
   if (kind === 'cost') return openJobCostSheet(p);
   if (kind === 'quote') return openQuoteSheet(p);
   if (kind === 'log') return openJobLogSheet(p);
-  if (kind === 'reports') return openReportsSheet(p);
   if (kind === 'notes') return openNotesSheet(p);
 }
 function backToProjectDetail(pid) { openProjectDetail(pid); }
@@ -963,18 +972,12 @@ function openJobLogSheet(p) {
 }
 
 /* ---- Reports ---- */
-function openReportsSheet(p) {
-  document.getElementById('detail-title').textContent = 'Reports';
-  reportsYearFilter = reportsYearFilter || 'all';
-  renderReportsContent(p);
-}
 let reportsYearFilter = 'all';
-function setReportsYear(y) { reportsYearFilter = y; renderReportsContent(DATA.projects.find(x=>x.id===currentReportsProjectId) || DATA.projects[0]); }
-let currentReportsProjectId = null;
+function setReportsYear(y) { reportsYearFilter = y; renderReports(); }
 
-function renderReportsContent(p) {
-  currentReportsProjectId = p.id;
-  const calc = calcJobCost(p.jobCost);
+function renderReports() {
+  const container = document.getElementById('reports-content');
+  if (!container) return;
 
   const years = [...new Set(DATA.projects.map(pr => pr.date.slice(0,4)))].sort().reverse();
   const filtered = DATA.projects.filter(pr => reportsYearFilter === 'all' || pr.date.slice(0,4) === reportsYearFilter);
@@ -1020,7 +1023,7 @@ function renderReportsContent(p) {
       </div>`;
   }).join('');
 
-  document.getElementById('detail-content').innerHTML = `
+  container.innerHTML = `
     <div class="agenda-section-label">Year</div>
     <div class="region-toggle" style="flex-wrap:wrap;height:auto;padding:3px;margin-bottom:16px;">
       <button class="region-btn ${reportsYearFilter==='all'?'on':''}" onclick="setReportsYear('all')">All</button>
@@ -1034,16 +1037,6 @@ function renderReportsContent(p) {
         <div style="display:flex;align-items:center;gap:5px;"><div style="width:9px;height:9px;border-radius:2px;background:var(--wood-deep);"></div>Revenue</div>
         <div style="display:flex;align-items:center;gap:5px;"><div style="width:9px;height:9px;border-radius:2px;background:var(--green);"></div>Profit</div>
       </div>
-    </div>
-
-    <div class="agenda-section-label">This Project</div>
-    <div style="background:white;border-radius:14px;padding:14px;border:1px solid #F0E9DA;margin-bottom:16px;">
-      ${inputRow('Revenue (inc. GST)', '$'+fmtMoney(calc.finalIncGst))}
-      ${inputRow('Profit', '$'+fmtMoney(calc.profit))}
-      ${inputRow('Margin', calc.finalExGst ? Math.round(calc.profit/calc.finalExGst*100)+'%' : '—')}
-      ${inputRow('Hours', calc.hours)}
-      ${inputRow('Materials', '$'+fmtMoney(calc.materialsTotal))}
-      ${inputRow('Travel Cost', '$'+fmtMoney(calc.travelTotal))}
     </div>
 
     <div class="agenda-section-label">All Projects ${reportsYearFilter!=='all' ? '('+reportsYearFilter+')' : ''}</div>
@@ -1073,10 +1066,6 @@ function renderReportsContent(p) {
     <div class="agenda-section-label">Travel % Used</div>
     <div style="background:white;border-radius:14px;padding:14px;border:1px solid #F0E9DA;margin-bottom:16px;">
       ${Object.keys(travelCounts).length ? Object.entries(travelCounts).map(([k,v]) => inputRow(k, v+' project'+(v>1?'s':''))).join('') : '<div style="font-size:12px;color:var(--ink-soft);">No data.</div>'}
-    </div>
-
-    <div class="modal-actions">
-      <button class="btn btn-secondary" onclick="backToProjectDetail('${p.id}')">Back</button>
     </div>
   `;
 }
