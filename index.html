@@ -963,24 +963,118 @@ function openJobLogSheet(p) {
 
 /* ---- Reports ---- */
 function openReportsSheet(p) {
+  document.getElementById('detail-title').textContent = 'Reports';
+  reportsYearFilter = reportsYearFilter || 'all';
+  renderReportsContent(p);
+}
+let reportsYearFilter = 'all';
+function setReportsYear(y) { reportsYearFilter = y; renderReportsContent(DATA.projects.find(x=>x.id===currentReportsProjectId) || DATA.projects[0]); }
+let currentReportsProjectId = null;
+
+function renderReportsContent(p) {
+  currentReportsProjectId = p.id;
   const calc = calcJobCost(p.jobCost);
-  const allCalcs = DATA.projects.map(pr => ({ p: pr, c: calcJobCost(pr.jobCost) }));
+
+  const years = [...new Set(DATA.projects.map(pr => pr.date.slice(0,4)))].sort().reverse();
+  const filtered = DATA.projects.filter(pr => reportsYearFilter === 'all' || pr.date.slice(0,4) === reportsYearFilter);
+  const allCalcs = filtered.map(pr => ({ p: pr, c: calcJobCost(pr.jobCost) }));
+
   const totalRevenue = allCalcs.reduce((s,x)=> s + x.c.finalIncGst, 0);
   const totalProfit = allCalcs.reduce((s,x)=> s + x.c.profit, 0);
-  document.getElementById('detail-title').textContent = 'Reports';
+  const totalHours = allCalcs.reduce((s,x)=> s + x.c.hours, 0);
+  const totalMaterials = allCalcs.reduce((s,x)=> s + x.c.materialsTotal, 0);
+  const totalTravelCost = allCalcs.reduce((s,x)=> s + x.c.travelTotal, 0);
+  const totalTravelEntries = allCalcs.reduce((s,x)=> s + (x.p.jobCost.travel||[]).length, 0);
+
+  // friend vs non-friend revenue
+  let friendRevenue = 0, nonFriendRevenue = 0, friendCount = 0, nonFriendCount = 0;
+  allCalcs.forEach(({p: pr, c}) => {
+    const contact = DATA.contacts.find(ct => ct.name === pr.name);
+    const isFriend = contact && contact.isFriend === 'Yes';
+    if (isFriend) { friendRevenue += c.finalIncGst; friendCount++; }
+    else { nonFriendRevenue += c.finalIncGst; nonFriendCount++; }
+  });
+
+  // percentage usage counts (effort and travel %)
+  const effortCounts = {};
+  const travelCounts = {};
+  allCalcs.forEach(({c}) => {
+    const eKey = (c.effortPct*100).toFixed(1).replace(/\.0$/,'') + '%';
+    const tKey = (c.travelPct*100).toFixed(1).replace(/\.0$/,'') + '%';
+    effortCounts[eKey] = (effortCounts[eKey]||0) + 1;
+    travelCounts[tKey] = (travelCounts[tKey]||0) + 1;
+  });
+
+  // bar chart data: revenue vs profit per project
+  const maxVal = Math.max(1, ...allCalcs.map(x => x.c.finalIncGst));
+  const barChart = allCalcs.map(({p: pr, c}) => {
+    const revH = Math.max(2, Math.round((c.finalIncGst / maxVal) * 100));
+    const profH = Math.max(2, Math.round((c.profit / maxVal) * 100));
+    return `
+      <div style="display:flex;flex-direction:column;align-items:center;gap:4px;flex:1;min-width:0;">
+        <div style="display:flex;align-items:flex-end;gap:3px;height:110px;">
+          <div style="width:12px;height:${revH}px;background:var(--wood-deep);border-radius:3px 3px 0 0;" title="Revenue"></div>
+          <div style="width:12px;height:${profH}px;background:var(--green);border-radius:3px 3px 0 0;" title="Profit"></div>
+        </div>
+        <div style="font-size:9px;color:var(--ink-soft);text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;width:100%;">${esc(pr.name.split(' ')[0])}</div>
+      </div>`;
+  }).join('');
+
   document.getElementById('detail-content').innerHTML = `
+    <div class="agenda-section-label">Year</div>
+    <div class="region-toggle" style="flex-wrap:wrap;height:auto;padding:3px;margin-bottom:16px;">
+      <button class="region-btn ${reportsYearFilter==='all'?'on':''}" onclick="setReportsYear('all')">All</button>
+      ${years.map(y => `<button class="region-btn ${reportsYearFilter===y?'on':''}" onclick="setReportsYear('${y}')">${y}</button>`).join('')}
+    </div>
+
+    <div class="agenda-section-label">Revenue vs Profit by Project</div>
+    <div style="background:white;border-radius:14px;padding:16px 12px;border:1px solid #F0E9DA;margin-bottom:16px;">
+      <div style="display:flex;gap:4px;margin-bottom:12px;">${barChart || '<div style="font-size:12px;color:var(--ink-soft);">No projects in this period.</div>'}</div>
+      <div style="display:flex;gap:16px;justify-content:center;font-size:10.5px;color:var(--ink-soft);">
+        <div style="display:flex;align-items:center;gap:5px;"><div style="width:9px;height:9px;border-radius:2px;background:var(--wood-deep);"></div>Revenue</div>
+        <div style="display:flex;align-items:center;gap:5px;"><div style="width:9px;height:9px;border-radius:2px;background:var(--green);"></div>Profit</div>
+      </div>
+    </div>
+
     <div class="agenda-section-label">This Project</div>
     <div style="background:white;border-radius:14px;padding:14px;border:1px solid #F0E9DA;margin-bottom:16px;">
       ${inputRow('Revenue (inc. GST)', '$'+fmtMoney(calc.finalIncGst))}
       ${inputRow('Profit', '$'+fmtMoney(calc.profit))}
       ${inputRow('Margin', calc.finalExGst ? Math.round(calc.profit/calc.finalExGst*100)+'%' : '—')}
+      ${inputRow('Hours', calc.hours)}
+      ${inputRow('Materials', '$'+fmtMoney(calc.materialsTotal))}
+      ${inputRow('Travel Cost', '$'+fmtMoney(calc.travelTotal))}
     </div>
-    <div class="agenda-section-label">All Projects</div>
+
+    <div class="agenda-section-label">All Projects ${reportsYearFilter!=='all' ? '('+reportsYearFilter+')' : ''}</div>
     <div style="background:white;border-radius:14px;padding:14px;border:1px solid #F0E9DA;margin-bottom:16px;">
-      ${inputRow('Total Projects', DATA.projects.length)}
+      ${inputRow('Total Projects', filtered.length)}
       ${inputRow('Total Revenue', '$'+fmtMoney(totalRevenue))}
       ${inputRow('Total Profit', '$'+fmtMoney(totalProfit))}
+      ${inputRow('Total Hours', totalHours)}
+      ${inputRow('Total Materials Cost', '$'+fmtMoney(totalMaterials))}
+      ${inputRow('Total Travel Entries', totalTravelEntries)}
+      ${inputRow('Total Travel Cost', '$'+fmtMoney(totalTravelCost))}
     </div>
+
+    <div class="agenda-section-label">Friends vs Clients</div>
+    <div style="background:white;border-radius:14px;padding:14px;border:1px solid #F0E9DA;margin-bottom:16px;">
+      ${inputRow('Friend Projects', friendCount)}
+      ${inputRow('Friend Revenue', '$'+fmtMoney(friendRevenue))}
+      ${inputRow('Non-Friend Projects', nonFriendCount)}
+      ${inputRow('Non-Friend Revenue', '$'+fmtMoney(nonFriendRevenue))}
+    </div>
+
+    <div class="agenda-section-label">Effort % Used</div>
+    <div style="background:white;border-radius:14px;padding:14px;border:1px solid #F0E9DA;margin-bottom:16px;">
+      ${Object.keys(effortCounts).length ? Object.entries(effortCounts).map(([k,v]) => inputRow(k, v+' project'+(v>1?'s':''))).join('') : '<div style="font-size:12px;color:var(--ink-soft);">No data.</div>'}
+    </div>
+
+    <div class="agenda-section-label">Travel % Used</div>
+    <div style="background:white;border-radius:14px;padding:14px;border:1px solid #F0E9DA;margin-bottom:16px;">
+      ${Object.keys(travelCounts).length ? Object.entries(travelCounts).map(([k,v]) => inputRow(k, v+' project'+(v>1?'s':''))).join('') : '<div style="font-size:12px;color:var(--ink-soft);">No data.</div>'}
+    </div>
+
     <div class="modal-actions">
       <button class="btn btn-secondary" onclick="backToProjectDetail('${p.id}')">Back</button>
     </div>
@@ -1482,6 +1576,7 @@ function openForm(kind, editId) {
       <div class="form-field" id="f-status-wrap" style="display:${item?.type==='Crew'?'none':'block'}"><label>Status</label><input id="f-status" value="${esc(item?.status||'')}" placeholder="Quote Sent, Active Job..."></div>
       <div class="form-field"><label>Phone</label><input id="f-phone" value="${esc(item?.phone||'')}" placeholder="+61400123456"></div>
       <div class="form-field"><label>Address</label><input id="f-address" value="${esc(item?.address||'')}"></div>
+      <div class="form-field"><label>Friend?</label><select id="f-isfriend"><option value="No" ${item?.isFriend!=='Yes'?'selected':''}>No</option><option value="Yes" ${item?.isFriend==='Yes'?'selected':''}>Yes</option></select></div>
       <div class="modal-actions">
         ${editId?`<button class="btn btn-danger" onclick="deleteItem('contacts','${editId}')">Delete</button>`:''}
         <button class="btn btn-primary" onclick="saveContact('${editId||''}')">Save</button>
@@ -1621,7 +1716,8 @@ function saveAgenda(editId) {
 function saveContact(editId) {
   const type = val('f-type');
   const obj = { name: val('f-name'), type, region: val('f-region'), phone: val('f-phone'), address: val('f-address'),
-                role: type==='Crew' ? val('f-role') : '', status: type==='Client' ? val('f-status') : '', email: '' };
+                role: type==='Crew' ? val('f-role') : '', status: type==='Client' ? val('f-status') : '', email: '',
+                isFriend: val('f-isfriend') };
   upsert('contacts', editId, obj);
   closeModal(); renderContacts();
 }
