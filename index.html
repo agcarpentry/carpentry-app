@@ -780,7 +780,7 @@ function openJobCostEdit(pid) {
     </div>
     <div class="form-row">
       <div class="form-field"><label>Discount (%)</label><input type="number" id="jc-discount" value="${jc.discount}"></div>
-      <div class="form-field"></div>
+      <div class="form-field"><label>Friend?</label><select id="jc-isfriend"><option value="No" ${p.isFriend!=='Yes'?'selected':''}>No</option><option value="Yes" ${p.isFriend==='Yes'?'selected':''}>Yes</option></select></div>
     </div>
     <div class="form-row">
       <div class="form-field"><label>Effort %</label><select id="jc-effort">${percentOptionsHtml(jc.effort)}</select></div>
@@ -897,6 +897,7 @@ function saveJobCostEdit() {
     effort: Number(document.getElementById('jc-effort').value),
     travelLevel: Number(document.getElementById('jc-travellevel').value),
   };
+  p.isFriend = val('jc-isfriend');
   const calc = calcJobCost(p.jobCost);
   p.amount = calc.finalIncGst;
   saveData();
@@ -989,8 +990,7 @@ function renderReportsContent(p) {
   // friend vs non-friend revenue
   let friendRevenue = 0, nonFriendRevenue = 0, friendCount = 0, nonFriendCount = 0;
   allCalcs.forEach(({p: pr, c}) => {
-    const contact = DATA.contacts.find(ct => ct.name === pr.name);
-    const isFriend = contact && contact.isFriend === 'Yes';
+    const isFriend = pr.isFriend === 'Yes';
     if (isFriend) { friendRevenue += c.finalIncGst; friendCount++; }
     else { nonFriendRevenue += c.finalIncGst; nonFriendCount++; }
   });
@@ -1576,7 +1576,6 @@ function openForm(kind, editId) {
       <div class="form-field" id="f-status-wrap" style="display:${item?.type==='Crew'?'none':'block'}"><label>Status</label><input id="f-status" value="${esc(item?.status||'')}" placeholder="Quote Sent, Active Job..."></div>
       <div class="form-field"><label>Phone</label><input id="f-phone" value="${esc(item?.phone||'')}" placeholder="+61400123456"></div>
       <div class="form-field"><label>Address</label><input id="f-address" value="${esc(item?.address||'')}"></div>
-      <div class="form-field"><label>Friend?</label><select id="f-isfriend"><option value="No" ${item?.isFriend!=='Yes'?'selected':''}>No</option><option value="Yes" ${item?.isFriend==='Yes'?'selected':''}>Yes</option></select></div>
       <div class="modal-actions">
         ${editId?`<button class="btn btn-danger" onclick="deleteItem('contacts','${editId}')">Delete</button>`:''}
         <button class="btn btn-primary" onclick="saveContact('${editId||''}')">Save</button>
@@ -1716,8 +1715,7 @@ function saveAgenda(editId) {
 function saveContact(editId) {
   const type = val('f-type');
   const obj = { name: val('f-name'), type, region: val('f-region'), phone: val('f-phone'), address: val('f-address'),
-                role: type==='Crew' ? val('f-role') : '', status: type==='Client' ? val('f-status') : '', email: '',
-                isFriend: val('f-isfriend') };
+                role: type==='Crew' ? val('f-role') : '', status: type==='Client' ? val('f-status') : '', email: '' };
   upsert('contacts', editId, obj);
   closeModal(); renderContacts();
 }
