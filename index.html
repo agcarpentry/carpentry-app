@@ -409,29 +409,69 @@
 
 <script>
 /* ============================================================
-   STORAGE
+   STORAGE — IndexedDB (much higher quota than localStorage)
+   DATA stays in memory for fast synchronous reads everywhere else
+   in the app; every write is persisted to IndexedDB in the background.
 ============================================================ */
-const STORE_KEY = 'agcarpentry_data_v1';
+const DB_NAME = 'agcarpentry_db';
+const DB_STORE = 'appdata';
+const DATA_KEY = 'main';
+const OLD_LOCALSTORAGE_KEY = 'agcarpentry_data_v1'; // for one-time migration
 
-function loadData() {
+let dbInstance = null;
+function openDB() {
+  return new Promise((resolve, reject) => {
+    if (dbInstance) return resolve(dbInstance);
+    const req = indexedDB.open(DB_NAME, 1);
+    req.onupgradeneeded = () => {
+      req.result.createObjectStore(DB_STORE);
+    };
+    req.onsuccess = () => { dbInstance = req.result; resolve(dbInstance); };
+    req.onerror = () => reject(req.error);
+  });
+}
+function idbGet(key) {
+  return openDB().then(db => new Promise((resolve, reject) => {
+    const tx = db.transaction(DB_STORE, 'readonly');
+    const req = tx.objectStore(DB_STORE).get(key);
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  }));
+}
+function idbSet(key, value) {
+  return openDB().then(db => new Promise((resolve, reject) => {
+    const tx = db.transaction(DB_STORE, 'readwrite');
+    tx.objectStore(DB_STORE).put(value, key);
+    tx.oncomplete = () => resolve(true);
+    tx.onerror = () => reject(tx.error);
+  }));
+}
+
+function saveData() {
+  idbSet(DATA_KEY, DATA).catch(err => {
+    alert('Storage is full — this save did not go through. Try removing an old photo or video from Portfolio to free up space, then save again.');
+  });
+  return true;
+}
+
+async function loadDataAsync() {
   try {
-    const raw = localStorage.getItem(STORE_KEY);
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      if (!parsed.settings) parsed.settings = seedData().settings;
-      return parsed;
+    const existing = await idbGet(DATA_KEY);
+    if (existing) {
+      if (!existing.settings) existing.settings = seedData().settings;
+      return existing;
+    }
+    // One-time migration from the old localStorage version, if present
+    const oldRaw = localStorage.getItem(OLD_LOCALSTORAGE_KEY);
+    if (oldRaw) {
+      const migrated = JSON.parse(oldRaw);
+      if (!migrated.settings) migrated.settings = seedData().settings;
+      await idbSet(DATA_KEY, migrated);
+      localStorage.removeItem(OLD_LOCALSTORAGE_KEY);
+      return migrated;
     }
   } catch(e) {}
   return seedData();
-}
-function saveData() {
-  try {
-    localStorage.setItem(STORE_KEY, JSON.stringify(DATA));
-    return true;
-  } catch (err) {
-    alert('Storage is full — this save did not go through. Try removing an old photo or video from Portfolio to free up space, then save again.');
-    return false;
-  }
 }
 
 function seedData() {
@@ -439,15 +479,15 @@ function seedData() {
     projects: [
       { id: "proj1", name: "John Peters", title: "Roof & Structure Rework", date: "2026-07-22", status: "In Progress", amount: 4280,
         jobCost: { materials: [{name:"Roof battens", qty:20, price:12}, {name:"Insulation batts", qty:15, price:18}], extraLabour: [{service:"Roofer subcontractor", name:"Dave M.", phone:"", cost:600}],
-                   travel:[{name:"Site visits", cost:80}], hours:32, rate:65, effort:2, travelLevel:1, discount:0 },
+                   travel:[{name:"Site visits", cost:80}], hours:32, rate:65, effort:0.25, travelLevel:0, discount:0 },
         notes: "Client requested extra insulation in the roof cavity.", quoteNotes: "" },
       { id: "proj2", name: "Sarah Mitchell", title: "TV Feature Wall", date: "2026-07-17", status: "Completed", amount: 1752,
         jobCost: { materials: [{name:"Pine framing", qty:8, price:15}, {name:"Plasterboard", qty:4, price:22}], extraLabour: [],
-                   travel:[{name:"Site visit", cost:40}], hours:18, rate:65, effort:1, travelLevel:1, discount:0 },
+                   travel:[{name:"Site visit", cost:40}], hours:18, rate:65, effort:0.10, travelLevel:0, discount:0 },
         notes: "", quoteNotes: "" },
       { id: "proj3", name: "David Nguyen", title: "Fireplace Surround", date: "2026-06-26", status: "Completed", amount: 2190,
         jobCost: { materials: [{name:"MDF surround panels", qty:6, price:35}, {name:"Trim & mouldings", qty:10, price:9}], extraLabour: [],
-                   travel:[{name:"Site visit", cost:30}], hours:22, rate:65, effort:2, travelLevel:1, discount:0 },
+                   travel:[{name:"Site visit", cost:30}], hours:22, rate:65, effort:0.25, travelLevel:0, discount:0 },
         notes: "", quoteNotes: "" },
     ],
     portfolio: [
@@ -488,10 +528,7 @@ function seedData() {
 }
 function id() { return Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
 
-const JOB_SETTINGS = {
-  effort: { 1: 0.10, 2: 0.25, 3: 0.45 },
-  travel: { 1: 0.00, 2: 0.10, 3: 0.20 },
-};
+const PERCENT_OPTIONS = [0, 0.005, 0.006, 0.10, 0.15, 0.20, 0.25, 0.30, 0.35, 0.40, 0.45, 0.50];
 
 function calcJobCost(jc) {
   const materialsTotal = (jc.materials||[]).reduce((s,m)=> s + (Number(m.qty)||0)*(Number(m.price)||0), 0);
@@ -500,8 +537,8 @@ function calcJobCost(jc) {
   const hours = Number(jc.hours)||0;
   const rate = Number(jc.rate)||0;
   const baseCost = materialsTotal + extraLabourTotal + travelTotal + (hours*rate);
-  const effortPct = JOB_SETTINGS.effort[jc.effort] ?? 0;
-  const travelPct = JOB_SETTINGS.travel[jc.travelLevel] ?? 0;
+  const effortPct = Number(jc.effort) || 0;
+  const travelPct = Number(jc.travelLevel) || 0;
   const priceBeforeDiscount = baseCost * (1 + effortPct + travelPct);
   const discountAmt = priceBeforeDiscount * ((Number(jc.discount)||0)/100);
   const finalExGst = priceBeforeDiscount - discountAmt;
@@ -525,7 +562,7 @@ const PLATFORM_URLS = {
   "Facebook Marketplace":"https://www.facebook.com/marketplace/"
 };
 
-let DATA = loadData();
+let DATA = seedData(); // temporary placeholder until IndexedDB finishes loading
 let currentRegion = "Gold Coast";
 let currentProspectRegion = "Gold Coast";
 let currentInvCat = "All";
@@ -678,8 +715,8 @@ function openJobCostSheet(p) {
     <div style="background:white;border-radius:14px;padding:14px;border:1px solid #F0E9DA;margin-bottom:16px;">
       ${inputRow('Hours on site', jc.hours+' hrs')}
       ${inputRow('Hourly rate', '$'+jc.rate+'/hr')}
-      ${inputRow('Effort level', jc.effort+' ('+Math.round(JOB_SETTINGS.effort[jc.effort]*100)+'%)')}
-      ${inputRow('Travel level', jc.travelLevel+' ('+Math.round(JOB_SETTINGS.travel[jc.travelLevel]*100)+'%)')}
+      ${inputRow('Effort %', (jc.effort*100).toFixed(1).replace(/\.0$/,'')+'%')}
+      ${inputRow('Travel %', (jc.travelLevel*100).toFixed(1).replace(/\.0$/,'')+'%')}
       ${inputRow('Discount', jc.discount+'%')}
     </div>
 
@@ -701,6 +738,13 @@ function openJobCostSheet(p) {
       <button class="btn btn-primary" onclick="openJobCostEdit('${p.id}')">Edit</button>
     </div>
   `;
+}
+function percentOptionsHtml(current) {
+  return PERCENT_OPTIONS.map(p => {
+    const label = (p*100).toFixed(1).replace(/\.0$/,'') + '%';
+    const isSelected = Math.abs((Number(current)||0) - p) < 0.0001;
+    return `<option value="${p}" ${isSelected?'selected':''}>${label}</option>`;
+  }).join('');
 }
 function inputRow(label, value) {
   return `<div style="display:flex;justify-content:space-between;padding:6px 0;font-size:13px;"><span style="color:var(--ink-soft);">${esc(label)}</span><span style="font-weight:700;">${esc(value)}</span></div>`;
@@ -739,16 +783,8 @@ function openJobCostEdit(pid) {
       <div class="form-field"></div>
     </div>
     <div class="form-row">
-      <div class="form-field"><label>Effort level</label><select id="jc-effort">
-        <option value="1" ${jc.effort==1?'selected':''}>1 — Simple (10%)</option>
-        <option value="2" ${jc.effort==2?'selected':''}>2 — Moderate (25%)</option>
-        <option value="3" ${jc.effort==3?'selected':''}>3 — Complex (45%)</option>
-      </select></div>
-      <div class="form-field"><label>Travel level</label><select id="jc-travellevel">
-        <option value="1" ${jc.travelLevel==1?'selected':''}>1 — Easy (0%)</option>
-        <option value="2" ${jc.travelLevel==2?'selected':''}>2 — Moderate (10%)</option>
-        <option value="3" ${jc.travelLevel==3?'selected':''}>3 — Hard (20%)</option>
-      </select></div>
+      <div class="form-field"><label>Effort %</label><select id="jc-effort">${percentOptionsHtml(jc.effort)}</select></div>
+      <div class="form-field"><label>Travel %</label><select id="jc-travellevel">${percentOptionsHtml(jc.travelLevel)}</select></div>
     </div>
 
     <div class="modal-actions">
@@ -1493,7 +1529,7 @@ function tableFor(kind) {
 function saveProject(editId) {
   const obj = { name: val('f-name'), title: val('f-title'), date: val('f-date'), status: val('f-status'), amount: Number(val('f-amount'))||0 };
   if (!editId) {
-    obj.jobCost = { materials: [], extraLabour: [], travel: [], hours: 0, rate: 65, effort: 1, travelLevel: 1, discount: 0 };
+    obj.jobCost = { materials: [], extraLabour: [], travel: [], hours: 0, rate: 65, effort: 0, travelLevel: 0, discount: 0 };
     obj.notes = '';
   }
   upsert('projects', editId, obj);
