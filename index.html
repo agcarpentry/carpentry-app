@@ -216,7 +216,19 @@
   .map-legend { position: absolute; top: 10px; left: 10px; background: rgba(255,255,255,0.92); border-radius: 10px; padding: 7px 10px; display: flex; gap: 12px; box-shadow: 0 2px 8px rgba(26,23,20,0.1); }
   .map-legend-item { display: flex; align-items: center; gap: 5px; font-size: 9.5px; font-weight: 700; color: var(--ink-body); }
   .map-legend-dot { width: 9px; height: 9px; border-radius: 50%; }
+  .install-banner {
+    position: fixed; left: 14px; right: 14px; bottom: calc(14px + env(safe-area-inset-bottom, 0px));
+    background: var(--wood-deep); color: white; border-radius: 16px; padding: 14px 16px;
+    display: none; align-items: center; gap: 12px; z-index: 200; box-shadow: 0 8px 24px rgba(0,0,0,0.3);
+  }
+  .install-banner.show { display: flex; }
+  .install-banner-text { flex: 1; font-size: 13px; font-weight: 600; }
+  .install-banner button { background: white; color: var(--wood-deep); border: none; border-radius: 10px; padding: 9px 14px; font-weight: 700; font-size: 13px; }
+  .install-banner .dismiss { background: none; color: rgba(255,255,255,0.7); padding: 9px 6px; }
 </style>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#5C4025">
+<link rel="apple-touch-icon" href="pwa_assets/icon-192.png">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 </head>
@@ -412,7 +424,15 @@ function loadData() {
   } catch(e) {}
   return seedData();
 }
-function saveData() { localStorage.setItem(STORE_KEY, JSON.stringify(DATA)); }
+function saveData() {
+  try {
+    localStorage.setItem(STORE_KEY, JSON.stringify(DATA));
+    return true;
+  } catch (err) {
+    alert('Storage is full — this save did not go through. Try removing an old photo or video from Portfolio to free up space, then save again.');
+    return false;
+  }
+}
 
 function seedData() {
   return {
@@ -1510,14 +1530,45 @@ function handleMediaUpload(inputEl, previewId) {
   if (isVideo && file.size > 15 * 1024 * 1024) {
     alert('Video is large (' + Math.round(file.size/1024/1024) + 'MB). This may make the app slow to save. Consider a shorter clip.');
   }
-  const reader = new FileReader();
-  reader.onload = (e) => {
-    document.getElementById(previewId).innerHTML = mediaTag(e.target.result, isVideo);
-  };
-  reader.onerror = () => {
-    alert('Could not read this file. Please try a different photo or video.');
-  };
-  reader.readAsDataURL(file);
+  if (isVideo) {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      document.getElementById(previewId).innerHTML = mediaTag(e.target.result, true);
+    };
+    reader.onerror = () => { alert('Could not read this file. Please try a different video.'); };
+    reader.readAsDataURL(file);
+    return;
+  }
+  // Photos: compress before storing, so storage lasts for many more photos
+  compressImage(file, 1280, 0.75).then(dataUrl => {
+    document.getElementById(previewId).innerHTML = mediaTag(dataUrl, false);
+  }).catch(() => {
+    alert('Could not read this photo. Please try a different file.');
+  });
+}
+function compressImage(file, maxDim, quality) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => {
+        let { width, height } = img;
+        if (width > maxDim || height > maxDim) {
+          if (width > height) { height = Math.round(height * maxDim / width); width = maxDim; }
+          else { width = Math.round(width * maxDim / height); height = maxDim; }
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = width; canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, width, height);
+        resolve(canvas.toDataURL('image/jpeg', quality));
+      };
+      img.onerror = reject;
+      img.src = e.target.result;
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
 }
 function saveInventory(editId) {
   const photoEl = document.getElementById('f-photo-preview').querySelector('img,video');
