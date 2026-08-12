@@ -636,7 +636,6 @@ function openProjectDetail(pid) {
     <div style="font-size:11px;font-weight:800;letter-spacing:0.06em;text-transform:uppercase;color:var(--fende);margin:4px 4px 8px;">Project Spreadsheets</div>
     ${sheetRow('cost', 'Job Cost Calculator', 'Materials, labour & pricing', p.id, 'var(--wood-deep)', iconCalc())}
     ${sheetRow('quote', 'Quote', 'Client-facing quote document', p.id, 'var(--wood)', iconDoc())}
-    ${sheetRow('log', 'Job Log', 'Job history & records', p.id, 'var(--fende)', iconList())}
     ${sheetRow('notes', 'Notes', 'Site notes & client requests', p.id, 'var(--ink-soft)', iconDoc())}
 
     <div class="modal-actions">
@@ -672,7 +671,6 @@ function openSheet(kind, pid) {
   if (!p) return;
   if (kind === 'cost') return openJobCostSheet(p);
   if (kind === 'quote') return openQuoteSheet(p);
-  if (kind === 'log') return openJobLogSheet(p);
   if (kind === 'notes') return openNotesSheet(p);
 }
 function backToProjectDetail(pid) { openProjectDetail(pid); }
@@ -949,28 +947,6 @@ function openQuoteSheet(p) {
 }
 
 /* ---- Job Log ---- */
-function openJobLogSheet(p) {
-  const calc = calcJobCost(p.jobCost);
-  document.getElementById('detail-title').textContent = 'Job Log';
-  document.getElementById('detail-content').innerHTML = `
-    <div style="background:white;border-radius:14px;padding:14px;border:1px solid #F0E9DA;">
-      ${inputRow('Date', fmtDate(p.date))}
-      ${inputRow('Client', p.name)}
-      ${inputRow('Materials', '$'+fmtMoney(calc.materialsTotal))}
-      ${inputRow('Extra Labour', '$'+fmtMoney(calc.extraLabourTotal))}
-      ${inputRow('Travel', '$'+fmtMoney(calc.travelTotal))}
-      ${inputRow('Hours', calc.hours)}
-      ${inputRow('Rate', '$'+calc.rate+'/hr')}
-      ${inputRow('Final Price inc. GST', '$'+fmtMoney(calc.finalIncGst))}
-      ${inputRow('Profit', '$'+fmtMoney(calc.profit))}
-      ${inputRow('Status', p.status)}
-    </div>
-    <div class="modal-actions">
-      <button class="btn btn-secondary" onclick="backToProjectDetail('${p.id}')">Back</button>
-    </div>
-  `;
-}
-
 /* ---- Reports ---- */
 let reportsYearFilter = 'all';
 function setReportsYear(y) { reportsYearFilter = y; renderReports(); }
@@ -1066,6 +1042,28 @@ function renderReports() {
     <div class="agenda-section-label">Travel % Used</div>
     <div style="background:white;border-radius:14px;padding:14px;border:1px solid #F0E9DA;margin-bottom:16px;">
       ${Object.keys(travelCounts).length ? Object.entries(travelCounts).map(([k,v]) => inputRow(k, v+' project'+(v>1?'s':''))).join('') : '<div style="font-size:12px;color:var(--ink-soft);">No data.</div>'}
+    </div>
+
+    <div class="agenda-section-label">Job Log ${reportsYearFilter!=='all' ? '('+reportsYearFilter+')' : ''}</div>
+    <div style="margin-bottom:16px;">
+      ${allCalcs.length ? [...allCalcs].sort((a,b)=> b.p.date.localeCompare(a.p.date)).map(({p: pr, c}) => `
+        <div class="agenda-card" style="margin-bottom:10px;" onclick="openProjectDetail('${pr.id}')">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px;">
+            <div>
+              <div style="font-size:13.5px;font-weight:800;color:var(--ink-body);">${esc(pr.name)}</div>
+              <div style="font-size:11px;color:var(--ink-soft);">${esc(pr.title)} · ${fmtDate(pr.date)}</div>
+            </div>
+            <div class="project-status ${pr.status==='Completed'?'status-done':'status-progress'}">${pr.status}</div>
+          </div>
+          ${inputRow('Materials', '$'+fmtMoney(c.materialsTotal))}
+          ${inputRow('Extra Labour', '$'+fmtMoney(c.extraLabourTotal))}
+          ${inputRow('Travel', '$'+fmtMoney(c.travelTotal))}
+          ${inputRow('Hours', c.hours)}
+          ${inputRow('Rate', '$'+c.rate+'/hr')}
+          ${inputRow('Final Price inc. GST', '$'+fmtMoney(c.finalIncGst))}
+          ${inputRow('Profit', '$'+fmtMoney(c.profit))}
+        </div>
+      `).join('') : '<div style="font-size:12px;color:var(--ink-soft);padding:8px 4px;">No jobs in this period.</div>'}
     </div>
   `;
 }
