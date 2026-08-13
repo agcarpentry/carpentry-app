@@ -959,7 +959,7 @@ function openQuoteSheet(p) {
 let reportsPeriodMode = 'month'; // 'week' | 'month' | 'year'
 let reportsPeriodOffset = 0; // 0 = current period, -1 = previous, etc.
 
-function setReportsPeriodMode(mode) { reportsPeriodMode = mode; reportsPeriodOffset = 0; renderReports(); }
+function setReportsPeriodMode(mode) { reportsPeriodMode = mode; reportsPeriodOffset = 0; reportsHasAutoJumped = false; renderReports(); }
 function shiftReportsPeriod(delta) { reportsPeriodOffset += delta; renderReports(); }
 
 function getPeriodRange(mode, offset) {
@@ -1025,9 +1025,33 @@ function buildTimeBuckets(mode, range) {
   return buckets;
 }
 
+let reportsHasAutoJumped = false;
 function renderReports() {
   const container = document.getElementById('reports-content');
   if (!container) return;
+
+  // Smart default: if there's no project in the current period and the user
+  // hasn't manually navigated yet, jump to the most recent period that has data.
+  if (!reportsHasAutoJumped && reportsPeriodOffset === 0 && DATA.projects.length) {
+    const testRange = getPeriodRange(reportsPeriodMode, 0);
+    const hasDataNow = DATA.projects.some(pr => {
+      const d = new Date(pr.date + 'T00:00:00');
+      return d >= testRange.start && d <= testRange.end;
+    });
+    if (!hasDataNow) {
+      const mostRecent = [...DATA.projects].sort((a,b)=> b.date.localeCompare(a.date))[0];
+      const targetDate = new Date(mostRecent.date + 'T00:00:00');
+      const now = new Date();
+      if (reportsPeriodMode === 'year') {
+        reportsPeriodOffset = targetDate.getFullYear() - now.getFullYear();
+      } else if (reportsPeriodMode === 'month') {
+        reportsPeriodOffset = (targetDate.getFullYear()-now.getFullYear())*12 + (targetDate.getMonth()-now.getMonth());
+      } else {
+        reportsPeriodOffset = Math.round((targetDate - now) / (7*24*60*60*1000));
+      }
+    }
+    reportsHasAutoJumped = true;
+  }
 
   const range = getPeriodRange(reportsPeriodMode, reportsPeriodOffset);
   const filtered = DATA.projects.filter(pr => {
