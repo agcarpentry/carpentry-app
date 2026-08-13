@@ -956,15 +956,48 @@ function openQuoteSheet(p) {
 
 /* ---- Job Log ---- */
 /* ---- Reports ---- */
-let reportsYearFilter = 'all';
-function setReportsYear(y) { reportsYearFilter = y; renderReports(); }
+let reportsPeriodMode = 'month'; // 'week' | 'month' | 'year'
+let reportsPeriodOffset = 0; // 0 = current period, -1 = previous, etc.
+
+function setReportsPeriodMode(mode) { reportsPeriodMode = mode; reportsPeriodOffset = 0; renderReports(); }
+function shiftReportsPeriod(delta) { reportsPeriodOffset += delta; renderReports(); }
+
+function getPeriodRange(mode, offset) {
+  const now = new Date();
+  if (mode === 'week') {
+    const day = now.getDay();
+    const monday = new Date(now);
+    monday.setDate(now.getDate() - ((day+6)%7) + (offset*7));
+    monday.setHours(0,0,0,0);
+    const sunday = new Date(monday);
+    sunday.setDate(monday.getDate()+6);
+    sunday.setHours(23,59,59,999);
+    const label = monday.toLocaleDateString('en-AU',{day:'numeric',month:'short'}) + ' – ' + sunday.toLocaleDateString('en-AU',{day:'numeric',month:'short',year:'numeric'});
+    return { start: monday, end: sunday, label };
+  }
+  if (mode === 'month') {
+    const d = new Date(now.getFullYear(), now.getMonth()+offset, 1);
+    const start = new Date(d.getFullYear(), d.getMonth(), 1);
+    const end = new Date(d.getFullYear(), d.getMonth()+1, 0, 23,59,59,999);
+    const label = start.toLocaleDateString('en-AU',{month:'long', year:'numeric'});
+    return { start, end, label };
+  }
+  // year
+  const y = now.getFullYear() + offset;
+  const start = new Date(y,0,1);
+  const end = new Date(y,11,31,23,59,59,999);
+  return { start, end, label: String(y) };
+}
 
 function renderReports() {
   const container = document.getElementById('reports-content');
   if (!container) return;
 
-  const years = [...new Set(DATA.projects.map(pr => pr.date.slice(0,4)))].sort().reverse();
-  const filtered = DATA.projects.filter(pr => reportsYearFilter === 'all' || pr.date.slice(0,4) === reportsYearFilter);
+  const range = getPeriodRange(reportsPeriodMode, reportsPeriodOffset);
+  const filtered = DATA.projects.filter(pr => {
+    const d = new Date(pr.date + 'T00:00:00');
+    return d >= range.start && d <= range.end;
+  });
   const allCalcs = filtered.map(pr => ({ p: pr, c: calcJobCost(pr.jobCost) }));
 
   const totalRevenue = allCalcs.reduce((s,x)=> s + x.c.finalIncGst, 0);
@@ -1016,10 +1049,15 @@ function renderReports() {
   }).join('');
 
   container.innerHTML = `
-    <div class="agenda-section-label">Year</div>
-    <div class="region-toggle" style="flex-wrap:wrap;height:auto;padding:3px;margin-bottom:16px;">
-      <button class="region-btn ${reportsYearFilter==='all'?'on':''}" onclick="setReportsYear('all')">All</button>
-      ${years.map(y => `<button class="region-btn ${reportsYearFilter===y?'on':''}" onclick="setReportsYear('${y}')">${y}</button>`).join('')}
+    <div class="region-toggle" style="margin-bottom:10px;">
+      <button class="region-btn ${reportsPeriodMode==='week'?'on':''}" onclick="setReportsPeriodMode('week')">Week</button>
+      <button class="region-btn ${reportsPeriodMode==='month'?'on':''}" onclick="setReportsPeriodMode('month')">Month</button>
+      <button class="region-btn ${reportsPeriodMode==='year'?'on':''}" onclick="setReportsPeriodMode('year')">Year</button>
+    </div>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;background:white;border-radius:12px;padding:10px 12px;border:1px solid #F0E9DA;">
+      <button onclick="shiftReportsPeriod(-1)" style="background:none;border:none;padding:6px;color:var(--wood-deep);"><svg viewBox="0 0 24 24" fill="none" width="18" height="18"><path d="M15 6l-6 6 6 6" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+      <div style="font-size:13px;font-weight:700;color:var(--ink-body);">${range.label}</div>
+      <button onclick="shiftReportsPeriod(1)" style="background:none;border:none;padding:6px;color:var(--wood-deep);"><svg viewBox="0 0 24 24" fill="none" width="18" height="18"><path d="M9 6l6 6-6 6" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
     </div>
 
     <div class="agenda-section-label">Revenue vs Profit by Project</div>
@@ -1031,7 +1069,7 @@ function renderReports() {
       </div>
     </div>
 
-    <div class="agenda-section-label">All Projects ${reportsYearFilter!=='all' ? '('+reportsYearFilter+')' : ''}</div>
+    <div class="agenda-section-label">All Projects (${range.label})</div>
     <div style="background:white;border-radius:14px;padding:14px;border:1px solid #F0E9DA;margin-bottom:16px;">
       ${inputRow('Total Projects', filtered.length)}
       ${inputRow('Total Revenue', '$'+fmtMoney(totalRevenue))}
@@ -1072,7 +1110,7 @@ function renderReports() {
       ${inputRow('Long trips (30+ min)', durationCounts.Long)}
     </div>
 
-    <div class="agenda-section-label">Job Log ${reportsYearFilter!=='all' ? '('+reportsYearFilter+')' : ''}</div>
+    <div class="agenda-section-label">Job Log (${range.label})</div>
     <div style="margin-bottom:16px;">
       ${allCalcs.length ? [...allCalcs].sort((a,b)=> b.p.date.localeCompare(a.p.date)).map(({p: pr, c}) => `
         <div class="agenda-card" style="margin-bottom:10px;" onclick="openProjectDetail('${pr.id}')">
