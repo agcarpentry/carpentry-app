@@ -989,6 +989,42 @@ function getPeriodRange(mode, offset) {
   return { start, end, label: String(y) };
 }
 
+function buildTimeBuckets(mode, range) {
+  const buckets = [];
+  if (mode === 'week') {
+    const dayNames = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(range.start);
+      d.setDate(d.getDate()+i);
+      const start = new Date(d); start.setHours(0,0,0,0);
+      const end = new Date(d); end.setHours(23,59,59,999);
+      buckets.push({ start, end, label: dayNames[i] });
+    }
+  } else if (mode === 'month') {
+    let weekNum = 1;
+    let cursor = new Date(range.start);
+    while (cursor <= range.end) {
+      const start = new Date(cursor);
+      const end = new Date(cursor);
+      end.setDate(end.getDate()+6);
+      if (end > range.end) end.setTime(range.end.getTime());
+      end.setHours(23,59,59,999);
+      buckets.push({ start, end, label: 'W'+weekNum });
+      cursor.setDate(cursor.getDate()+7);
+      weekNum++;
+    }
+  } else {
+    const monthNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    const year = range.start.getFullYear();
+    for (let m = 0; m < 12; m++) {
+      const start = new Date(year, m, 1);
+      const end = new Date(year, m+1, 0, 23,59,59,999);
+      buckets.push({ start, end, label: monthNames[m] });
+    }
+  }
+  return buckets;
+}
+
 function renderReports() {
   const container = document.getElementById('reports-content');
   if (!container) return;
@@ -1033,20 +1069,39 @@ function renderReports() {
     });
   });
 
-  // bar chart data: revenue vs profit per project
-  const maxVal = Math.max(1, ...allCalcs.map(x => x.c.finalIncGst));
-  const barChart = allCalcs.map(({p: pr, c}) => {
-    const revH = Math.max(2, Math.round((c.finalIncGst / maxVal) * 100));
-    const profH = Math.max(2, Math.round((c.profit / maxVal) * 100));
-    return `
-      <div style="display:flex;flex-direction:column;align-items:center;gap:4px;flex:1;min-width:0;">
-        <div style="display:flex;align-items:flex-end;gap:3px;height:110px;">
-          <div style="width:12px;height:${revH}px;background:var(--wood-deep);border-radius:3px 3px 0 0;" title="Revenue"></div>
-          <div style="width:12px;height:${profH}px;background:var(--green);border-radius:3px 3px 0 0;" title="Profit"></div>
-        </div>
-        <div style="font-size:9px;color:var(--ink-soft);text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;width:100%;">${esc(pr.name.split(' ')[0])}</div>
-      </div>`;
-  }).join('');
+  // multi-metric time-series chart: group projects into sub-periods within the selected range
+  const buckets = buildTimeBuckets(reportsPeriodMode, range);
+  buckets.forEach(b => {
+    b.calcs = allCalcs.filter(({p: pr}) => {
+      const d = new Date(pr.date + 'T00:00:00');
+      return d >= b.start && d <= b.end;
+    });
+    b.revenue = b.calcs.reduce((s,x)=>s+x.c.finalIncGst,0);
+    b.profit = b.calcs.reduce((s,x)=>s+x.c.profit,0);
+    b.hours = b.calcs.reduce((s,x)=>s+x.c.hours,0);
+    b.materials = b.calcs.reduce((s,x)=>s+x.c.materialsTotal,0);
+    b.travel = b.calcs.reduce((s,x)=>s+x.c.travelTotal,0);
+  });
+  const metrics = [
+    { key: 'revenue', label: 'Revenue', color: 'var(--wood-deep)' },
+    { key: 'profit', label: 'Profit', color: 'var(--green)' },
+    { key: 'hours', label: 'Hours', color: '#5B8AA6' },
+    { key: 'materials', label: 'Materials', color: '#C1652F' },
+    { key: 'travel', label: 'Travel', color: '#9A7FBF' },
+  ];
+  const maxes = {};
+  metrics.forEach(m => { maxes[m.key] = Math.max(1, ...buckets.map(b => b[m.key])); });
+
+  const barChart = buckets.map(b => `
+    <div style="display:flex;flex-direction:column;align-items:center;gap:4px;flex:1;min-width:0;">
+      <div style="display:flex;align-items:flex-end;gap:2px;height:110px;">
+        ${metrics.map(m => {
+          const h = Math.max(b[m.key] > 0 ? 3 : 1, Math.round((b[m.key] / maxes[m.key]) * 100));
+          return `<div style="width:8px;height:${h}px;background:${m.color};border-radius:2px 2px 0 0;" title="${m.label}: ${m.key==='hours'?b[m.key]:'$'+fmtMoney(b[m.key])}"></div>`;
+        }).join('')}
+      </div>
+      <div style="font-size:8.5px;color:var(--ink-soft);text-align:center;white-space:nowrap;">${b.label}</div>
+    </div>`).join('');
 
   container.innerHTML = `
     <div class="region-toggle" style="margin-bottom:10px;">
@@ -1060,13 +1115,13 @@ function renderReports() {
       <button onclick="shiftReportsPeriod(1)" style="background:none;border:none;padding:6px;color:var(--wood-deep);"><svg viewBox="0 0 24 24" fill="none" width="18" height="18"><path d="M9 6l6 6-6 6" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
     </div>
 
-    <div class="agenda-section-label">Revenue vs Profit by Project</div>
-    <div style="background:white;border-radius:14px;padding:16px 12px;border:1px solid #F0E9DA;margin-bottom:16px;">
-      <div style="display:flex;gap:4px;margin-bottom:12px;">${barChart || '<div style="font-size:12px;color:var(--ink-soft);">No projects in this period.</div>'}</div>
-      <div style="display:flex;gap:16px;justify-content:center;font-size:10.5px;color:var(--ink-soft);">
-        <div style="display:flex;align-items:center;gap:5px;"><div style="width:9px;height:9px;border-radius:2px;background:var(--wood-deep);"></div>Revenue</div>
-        <div style="display:flex;align-items:center;gap:5px;"><div style="width:9px;height:9px;border-radius:2px;background:var(--green);"></div>Profit</div>
+    <div class="agenda-section-label">Business Performance Over Time</div>
+    <div style="background:white;border-radius:14px;padding:16px 12px;border:1px solid #F0E9DA;margin-bottom:16px;overflow-x:auto;">
+      <div style="display:flex;gap:4px;margin-bottom:12px;min-width:min-content;">${barChart || '<div style="font-size:12px;color:var(--ink-soft);">No projects in this period.</div>'}</div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:center;font-size:10px;color:var(--ink-soft);">
+        ${metrics.map(m => `<div style="display:flex;align-items:center;gap:4px;"><div style="width:9px;height:9px;border-radius:2px;background:${m.color};"></div>${m.label}</div>`).join('')}
       </div>
+      <div style="font-size:10px;color:var(--ink-soft);text-align:center;margin-top:8px;">Each metric scaled to its own max, so all are visible together.</div>
     </div>
 
     <div class="agenda-section-label">All Projects (${range.label})</div>
