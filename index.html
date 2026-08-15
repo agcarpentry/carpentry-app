@@ -618,10 +618,10 @@ function seedData() {
       { id: id(), name: "Marcos Costa", type: "Client", role: "", phone: "+61400555222", email: "", address: "56 Chapel St, South Yarra VIC", region: "Melbourne", status: "Quote Sent" },
     ],
     prospects: [
-      { id: id(), address: "8 Marine Pde, Broadbeach QLD", active: true, region: "Gold Coast" },
-      { id: id(), address: "14 Riverview St, Nerang QLD", active: false, region: "Gold Coast" },
-      { id: id(), address: "3 Hillside Cr, Robina QLD", active: true, region: "Gold Coast" },
-      { id: id(), address: "27 Toorak Rd, South Yarra VIC", active: true, region: "Melbourne" },
+      { id: id(), name: "Mermaid Beach Bowls Club", sourceLink: "https://www.tenderlink.com/mermaidbeach", address: "2685 Gold Coast Hwy, Mermaid Beach QLD", active: true, region: "Gold Coast" },
+      { id: id(), name: "Nerang Community Centre", sourceLink: "https://www.estimateone.com/nerang-cc", address: "3 White St, Nerang QLD", active: false, region: "Gold Coast" },
+      { id: id(), name: "Robina Town Centre Fitout", sourceLink: "https://www.tenderlink.com/robina", address: "18 Robina Town Centre Dr, Robina QLD", active: true, region: "Gold Coast" },
+      { id: id(), name: "South Yarra Renovation", sourceLink: "https://www.hipages.com.au/job/98213", address: "2 Chapel St, South Yarra VIC", active: true, region: "Melbourne" },
     ],
     settings: {
       businessName: "A.G. Carpentry",
@@ -1610,13 +1610,15 @@ async function renderRealMap(mapDivId, listId, items, region, kind) {
     const color = kind === 'contact'
       ? (it.type === 'Client' ? '#C1652F' : '#A8A099')
       : (it.active ? '#6B8F5C' : '#DDD6C8');
-    const label = kind === 'contact' ? it.name : it.address.split(',')[0];
+    const label = kind === 'contact' ? it.name : (it.name || it.address.split(',')[0]);
     const icon = L.divIcon({
       className: '', html: `<svg viewBox="0 0 34 40" width="30" height="35" style="filter:drop-shadow(0 3px 5px rgba(0,0,0,0.3));"><path d="M17 0C7.6 0 0 7.6 0 17c0 12.7 17 23 17 23s17-10.3 17-23C34 7.6 26.4 0 17 0z" fill="${color}"/><circle cx="17" cy="17" r="6.5" fill="white"/></svg>`,
       iconSize: [30, 35], iconAnchor: [15, 35]
     });
     const marker = L.marker([coords.lat, coords.lon], { icon }).addTo(inst.map);
-    marker.bindPopup(`<b>${esc(label)}</b><br>${esc(it.address)}`);
+    const popupLines = [`<b>${esc(label)}</b>`, esc(it.address)];
+    if (kind !== 'contact' && it.sourceLink) popupLines.push(`<a href="${esc(it.sourceLink)}" target="_blank">Source link</a>`);
+    marker.bindPopup(popupLines.join('<br>'));
     inst.markers.push(marker);
   });
 
