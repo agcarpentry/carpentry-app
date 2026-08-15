@@ -328,7 +328,9 @@
     <div class="topbar"><div class="eyebrow">Help</div><h1>Tutorial</h1></div>
     <div class="content">
       <div class="tutorial-block">
-        <button class="btn btn-primary" style="width:100%;" onclick="openBusinessSettings()">Edit Business Details</button>
+        <button class="btn btn-primary" style="width:100%;margin-bottom:10px;" onclick="manualSave()">💾 Save Now</button>
+        <button class="btn btn-secondary" style="width:100%;margin-bottom:10px;" onclick="downloadBackup()">⬇️ Download Backup</button>
+        <button class="btn btn-secondary" style="width:100%;" onclick="openBusinessSettings()">Edit Business Details</button>
       </div>
       <div class="tutorial-block">
         <h3>Welcome to A.G. Carpentry</h3>
@@ -462,6 +464,93 @@ function saveData() {
     alert('Storage is full — this save did not go through. Try removing an old photo or video from Portfolio to free up space, then save again.');
   });
   return true;
+}
+
+function manualSave() {
+  idbSet(DATA_KEY, DATA).then(() => {
+    alert('Saved. All your data is safely stored on this device.');
+  }).catch(err => {
+    alert('Storage is full — save did not go through. Try removing an old photo or video from Portfolio to free up space.');
+  });
+}
+
+function downloadBackup() {
+  const dateStr = new Date().toISOString().slice(0,10);
+  // 1. JSON backup — full raw data, can be restored later
+  const jsonBlob = new Blob([JSON.stringify(DATA, null, 2)], { type: 'application/json' });
+  const jsonUrl = URL.createObjectURL(jsonBlob);
+  const jsonLink = document.createElement('a');
+  jsonLink.href = jsonUrl;
+  jsonLink.download = `agcarpentry-backup-${dateStr}.json`;
+  document.body.appendChild(jsonLink);
+  jsonLink.click();
+  document.body.removeChild(jsonLink);
+  URL.revokeObjectURL(jsonUrl);
+
+  // 2. Standalone HTML report — viewable in any browser, no app needed
+  setTimeout(() => {
+    const reportHtml = buildStandaloneReport();
+    const htmlBlob = new Blob([reportHtml], { type: 'text/html' });
+    const htmlUrl = URL.createObjectURL(htmlBlob);
+    const htmlLink = document.createElement('a');
+    htmlLink.href = htmlUrl;
+    htmlLink.download = `agcarpentry-report-${dateStr}.html`;
+    document.body.appendChild(htmlLink);
+    htmlLink.click();
+    document.body.removeChild(htmlLink);
+    URL.revokeObjectURL(htmlUrl);
+    alert('Two files downloaded: a JSON backup (for restoring data) and an HTML report (readable in any browser, even without the app).');
+  }, 600);
+}
+
+function buildStandaloneReport() {
+  const esc2 = (s) => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+  const projectsHtml = DATA.projects.map(p => {
+    const calc = calcJobCost(p.jobCost);
+    return `
+      <div style="border:1px solid #ddd;border-radius:10px;padding:14px;margin-bottom:12px;">
+        <h3 style="margin:0 0 6px;">${esc2(p.name)} — ${esc2(p.title)}</h3>
+        <div style="color:#666;font-size:13px;margin-bottom:8px;">${esc2(p.date)} · ${esc2(p.status)}</div>
+        <table style="width:100%;font-size:13px;border-collapse:collapse;">
+          <tr><td>Materials</td><td style="text-align:right;">$${fmtMoney(calc.materialsTotal)}</td></tr>
+          <tr><td>Extra Labour</td><td style="text-align:right;">$${fmtMoney(calc.extraLabourTotal)}</td></tr>
+          <tr><td>Travel</td><td style="text-align:right;">$${fmtMoney(calc.travelTotal)}</td></tr>
+          <tr><td>Hours</td><td style="text-align:right;">${calc.hours}</td></tr>
+          <tr><td><b>Final Price (inc. GST)</b></td><td style="text-align:right;"><b>$${fmtMoney(calc.finalIncGst)}</b></td></tr>
+          <tr><td>Profit</td><td style="text-align:right;">$${fmtMoney(calc.profit)}</td></tr>
+        </table>
+      </div>`;
+  }).join('');
+
+  const contactsHtml = DATA.contacts.map(c => `
+    <div style="border-bottom:1px solid #eee;padding:8px 0;font-size:13px;">
+      <b>${esc2(c.name)}</b> (${esc2(c.type)}) — ${esc2(c.phone)} — ${esc2(c.address)}
+    </div>`).join('');
+
+  const inventoryHtml = DATA.inventory.map(i => `
+    <div style="border-bottom:1px solid #eee;padding:8px 0;font-size:13px;">
+      ${esc2(i.name)} — ${i.qty} ${esc2(i.unit)} — ${esc2(i.category)} — ${esc2(i.location)}
+    </div>`).join('');
+
+  return `<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><title>A.G. Carpentry — Backup Report</title>
+<style>body{font-family:-apple-system,sans-serif;max-width:700px;margin:0 auto;padding:20px;background:#FDFBF8;color:#1A1714;}
+h1{color:#5C4025;} h2{color:#5C4025;border-bottom:2px solid #E8843C;padding-bottom:6px;margin-top:30px;}</style>
+</head><body>
+<h1>A.G. Carpentry — Full Backup Report</h1>
+<p>Generated: ${new Date().toLocaleString('en-AU')}</p>
+<p style="color:#888;font-size:13px;">This file is self-contained and can be opened in any browser, even without the app.</p>
+
+<h2>Projects (${DATA.projects.length})</h2>
+${projectsHtml || '<p>No projects.</p>'}
+
+<h2>Contacts (${DATA.contacts.length})</h2>
+${contactsHtml || '<p>No contacts.</p>'}
+
+<h2>Inventory (${DATA.inventory.length})</h2>
+${inventoryHtml || '<p>No inventory items.</p>'}
+
+</body></html>`;
 }
 
 async function loadDataAsync() {
@@ -1496,11 +1585,19 @@ async function renderRealMap(mapDivId, listId, items, region, kind) {
   if (listEl) listEl.innerHTML = items.map(it => `<div style="font-size:11px;color:var(--ink-soft);padding:2px 4px;">Locating ${esc(it.address.split(',')[0])}…</div>`).join('');
 
   const results = [];
-  for (const it of items) {
+  const failed = [];
+  for (let i = 0; i < items.length; i++) {
+    const it = items[i];
     const coords = await geocodeAddress(it.address);
     if (coords) results.push({ it, coords });
+    else failed.push(it.address);
+    if (i < items.length - 1) await new Promise(r => setTimeout(r, 1100)); // respect Nominatim's 1 req/sec limit
   }
-  if (listEl) listEl.innerHTML = '';
+  if (listEl) {
+    listEl.innerHTML = failed.length
+      ? `<div style="font-size:11px;color:#B0431F;padding:4px;">Could not locate: ${failed.map(a=>esc(a)).join('; ')}. Check the address is complete and correctly spelled.</div>`
+      : '';
+  }
 
   results.forEach(({ it, coords }) => {
     const color = kind === 'contact'
