@@ -3,6 +3,9 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
 <title>A.G. Carpentry</title>
 <style>
   :root {
@@ -314,9 +317,13 @@
           <div id="prospects-map-frame" class="real-map-frame"></div>
         </div>
         <div class="map-pin-list" id="prospects-map-pinlist"></div>
-        <div class="add-prospect-bar">
-          <input class="add-prospect-input" id="prospect-addr-input" placeholder="Paste an address here...">
-          <button class="add-prospect-btn" onclick="addProspect()"><svg viewBox="0 0 24 24" fill="none" width="16" height="16"><path d="M12 5v14M5 12h14" stroke="white" stroke-width="2.2" stroke-linecap="round"/></svg></button>
+        <div style="background:var(--fende-light);border-radius:12px;padding:12px;margin-bottom:14px;">
+          <input class="add-prospect-input" id="prospect-name-input" placeholder="Client / vendor name" style="width:100%;margin-bottom:8px;background:white;">
+          <input class="add-prospect-input" id="prospect-link-input" placeholder="Link (where you found the job)" style="width:100%;margin-bottom:8px;background:white;">
+          <div style="display:flex;gap:8px;align-items:center;">
+            <input class="add-prospect-input" id="prospect-addr-input" placeholder="Paste an address here..." style="flex:1;background:white;">
+            <button class="add-prospect-btn" onclick="addProspect()"><svg viewBox="0 0 24 24" fill="none" width="16" height="16"><path d="M12 5v14M5 12h14" stroke="white" stroke-width="2.2" stroke-linecap="round"/></svg></button>
+          </div>
         </div>
         <div id="prospects-list"></div>
       </div>
@@ -1666,7 +1673,11 @@ function renderProspects() {
     el.innerHTML = list.map(p => `
       <div class="prospect-row">
         <svg class="prospect-pin" viewBox="0 0 24 24" fill="none" width="18" height="18"><path d="M12 21s7-7.2 7-12a7 7 0 10-14 0c0 4.8 7 12 7 12z" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="9" r="2.5" stroke="currentColor" stroke-width="2"/></svg>
-        <div class="prospect-addr">${esc(p.address)}</div>
+        <div class="prospect-addr">
+          ${p.name ? `<div style="font-weight:700;">${esc(p.name)}</div>` : ''}
+          <div>${esc(p.address)}</div>
+          ${p.sourceLink ? `<a href="${esc(p.sourceLink)}" target="_blank" style="font-size:11px;color:var(--wood-deep);text-decoration:underline;word-break:break-all;">${esc(p.sourceLink)}</a>` : ''}
+        </div>
         <button class="prospect-toggle ${p.active?'on':'off'}" onclick="toggleProspect('${p.id}')"><div class="prospect-toggle-knob"></div></button>
         <button class="prospect-remove" onclick="deleteItem('prospects','${p.id}')"><svg viewBox="0 0 24 24" fill="none" width="16" height="16"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button>
       </div>
@@ -1680,12 +1691,23 @@ function toggleProspect(pid) {
   if (p) { p.active = !p.active; saveData(); renderProspects(); }
 }
 function addProspect() {
-  const input = document.getElementById('prospect-addr-input');
-  const val = input.value.trim();
-  if (!val) return;
-  DATA.prospects.push({ id: id(), address: val, active: true, region: currentProspectRegion });
+  const nameInput = document.getElementById('prospect-name-input');
+  const linkInput = document.getElementById('prospect-link-input');
+  const addrInput = document.getElementById('prospect-addr-input');
+  const address = addrInput.value.trim();
+  if (!address) return;
+  DATA.prospects.push({
+    id: id(),
+    name: nameInput.value.trim(),
+    sourceLink: linkInput.value.trim(),
+    address,
+    active: true,
+    region: currentProspectRegion
+  });
   saveData();
-  input.value = '';
+  nameInput.value = '';
+  linkInput.value = '';
+  addrInput.value = '';
   renderProspects();
 }
 
