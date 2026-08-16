@@ -337,6 +337,8 @@
       <div class="tutorial-block">
         <button class="btn btn-primary" style="width:100%;margin-bottom:10px;" onclick="manualSave()">💾 Save Now</button>
         <button class="btn btn-secondary" style="width:100%;margin-bottom:10px;" onclick="downloadBackup()">⬇️ Download Backup</button>
+        <button class="btn btn-secondary" style="width:100%;margin-bottom:10px;" onclick="document.getElementById('restore-file-input').click()">⬆️ Restore from Backup (.json)</button>
+        <input type="file" id="restore-file-input" accept="application/json" style="display:none;" onchange="restoreFromBackupFile(this)">
         <button class="btn btn-secondary" style="width:100%;" onclick="openBusinessSettings()">Edit Business Details</button>
       </div>
       <div class="tutorial-block">
@@ -481,6 +483,44 @@ function manualSave() {
   });
 }
 
+function restoreFromBackupFile(inputEl) {
+  const file = inputEl.files[0];
+  if (!file) return;
+  if (!confirm('This will replace everything currently shown in the app with the contents of this backup file. Continue?')) {
+    inputEl.value = '';
+    return;
+  }
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    let restored;
+    try {
+      restored = JSON.parse(e.target.result);
+    } catch (err) {
+      alert('This file could not be read as a valid backup. Please choose the .json backup file (not the .html report).');
+      inputEl.value = '';
+      return;
+    }
+    if (!restored || typeof restored !== 'object' || !Array.isArray(restored.projects)) {
+      alert('This does not look like a valid A.G. Carpentry backup file.');
+      inputEl.value = '';
+      return;
+    }
+    idbSet(DATA_KEY, restored).then(() => {
+      DATA = restored;
+      renderAll();
+      alert('Backup restored successfully. Your data is now saved on this device.');
+    }).catch(() => {
+      alert('Restore failed — storage may be full. Try freeing up space and try again.');
+    });
+    inputEl.value = '';
+  };
+  reader.onerror = () => {
+    alert('Could not read this file.');
+    inputEl.value = '';
+  };
+  reader.readAsText(file);
+}
+
 function downloadBackup() {
   const dateStr = new Date().toISOString().slice(0,10);
   // 1. JSON backup — full raw data, can be restored later
@@ -541,9 +581,12 @@ function buildStandaloneReport() {
     </div>`).join('');
 
   return `<!DOCTYPE html>
-<html><head><meta charset="UTF-8"><title>A.G. Carpentry — Backup Report</title>
-<style>body{font-family:-apple-system,sans-serif;max-width:700px;margin:0 auto;padding:20px;background:#FDFBF8;color:#1A1714;}
-h1{color:#5C4025;} h2{color:#5C4025;border-bottom:2px solid #E8843C;padding-bottom:6px;margin-top:30px;}</style>
+<html><head><meta charset="UTF-8"><meta name="color-scheme" content="light only"><title>A.G. Carpentry — Backup Report</title>
+<style>:root{color-scheme:light only;}
+html,body{background:#FDFBF8 !important;color:#1A1714 !important;}
+body{font-family:-apple-system,sans-serif;max-width:700px;margin:0 auto;padding:20px;}
+h1{color:#5C4025 !important;} h2{color:#5C4025 !important;border-bottom:2px solid #E8843C;padding-bottom:6px;margin-top:30px;}
+table,td,div,p{color:#1A1714 !important;}</style>
 </head><body>
 <h1>A.G. Carpentry — Full Backup Report</h1>
 <p>Generated: ${new Date().toLocaleString('en-AU')}</p>
@@ -1999,6 +2042,22 @@ loadDataAsync().then(loaded => {
   DATA = loaded;
   renderAll();
 });
+
+// Whenever this app becomes visible again (switching back from another app,
+// unlocking the phone, returning from a backgrounded/suspended tab), reload
+// the latest saved data before the user can touch anything. This prevents a
+// stale tab from silently overwriting newer data saved somewhere else.
+function resyncFromStorage() {
+  loadDataAsync().then(loaded => {
+    DATA = loaded;
+    renderAll();
+  });
+}
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') resyncFromStorage();
+});
+window.addEventListener('pageshow', resyncFromStorage);
+window.addEventListener('focus', resyncFromStorage);
 </script>
 </body>
 </html>
